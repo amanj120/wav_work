@@ -37,7 +37,7 @@ const char *menu =
 "\t\t\t  * \t//this audio sample is noise\n"
 "\t\t\t  * }\n"
 "\t\t\t  * valid values are [0,100] (percent)\n\n"
-"-o, --out\t\t: name of output file to write note data to, default is tune.csv";
+"-o, --out\t\t: name of output file to write note data to, default is tune.csv\n";
 
 static int verbose;
 static float sensitivity;
