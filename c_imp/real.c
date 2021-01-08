@@ -171,7 +171,7 @@ void display_note(int idx) { // TODO: make this more useful
 	if (strength > sensitivity) {
 		printf("sample %d:\t%s\t(strength: %.3f)\n",idx, NOTES[max_idx], strength);
 	} else {
-		printf("sample %d:\tnoise\t(strength: %3f)\n", idx, strength);
+		printf("sample %d:\tnoise\t(strength: %.3f)\n", idx, strength);
 	}
 
 	if (verbose) {
@@ -181,10 +181,6 @@ void display_note(int idx) { // TODO: make this more useful
 		}
 		printf("%s: %.3f]\n", NOTES[11], note[11]);
 	}
-}
-
-void display_last_note() {
-	display_note(size(song) - 1);
 }
 
 void update_recording(int cur, int len) {
@@ -210,7 +206,8 @@ const char *menu =
 "\t\t\t  * if (max(note_strengths)/sum(note_strengths) <= sensitivity) {\n"
 "\t\t\t  * \t//this audio sample is noise\n"
 "\t\t\t  * }\n"
-"\t\t\t  * valid values are [0,100] (percent)\n\n";
+"\t\t\t  * valid values are [0,100] (percent)\n\n"
+"-o, --out\t\t: name of output file to write note data to, default is tune.csv";
 
 
 int main(int argc, char *argv[]) {
@@ -218,6 +215,7 @@ int main(int argc, char *argv[]) {
 	int record_seconds = 2;
 	verbose = 0;
 	sensitivity = 0.5;
+	char *fname = "tune.csv";
 
 	for (int input = 1; input < argc; input++) {
 		char *option = argv[input];
@@ -241,6 +239,12 @@ int main(int argc, char *argv[]) {
 			} else {
 				sensitivity = ((float)t)/100.0;
 			}
+		} else if (strcmp(option, "-o") == 0 || strcmp(option, "--out") == 0) {
+			fname = argv[++input];
+			int fname_len = strlen(fname);
+			if (fname_len <= 4 || strcmp(fname + fname_len - 4, ".csv") != 0) {
+				return teardown("invalid argument for --out (-o) : expect a file name ending in '.csv'");
+			}
 		} else {
 			return teardown("invalid input parameter\n");
 		}
@@ -260,9 +264,11 @@ int main(int argc, char *argv[]) {
 	}
 
 	printf("\n");
-	display_last_note();
+	for (int idx = 0; idx < num_loops; idx++) {
+		display_note(idx);
+	}
 	write_sample();
-	write_note_arr_csv("tune.csv");
+	write_note_arr_csv(fname);
 	
 	return teardown("");
 }
