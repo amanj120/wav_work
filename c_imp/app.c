@@ -1,113 +1,5 @@
-#include <stdio.h>
-#include <pulse/simple.h>
-#include <stdlib.h>
-#include <cblas.h>
-#include <math.h>
-#include <sys/time.h>
-#include <string.h>
-
-#include "vector.h"
-
-#define dtype int16_t
-
-//gcc -o run real.c -lpulse-simple -lblas64 -lm -ldl -funroll-loops -O2
-
-static float *FFTS;
-static float *FFTC;
-static dtype *sample;
-static pa_simple *pa_server = NULL;
-
-static int started = 0;
-static vector *song;
-
-const int RATE = 44100;
-const int SAMPLE_LEN = 4096; 
-const int num_notes = 96; //8 octaves: A1 through Ab8
-const float start_freq = 55.0;
-
-static const char *NOTES[12] = {"A", "Bb", "B", "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab"};
-
-static int verbose;
-static float sensitivity;
-
-int setup_matrices() { //technically this can be faster, but it doesn't need to be
-	FFTS = (float *) malloc((SAMPLE_LEN) * (num_notes) * sizeof(float));
-	FFTC = (float *) malloc((SAMPLE_LEN) * (num_notes) * sizeof(float));
-	
-	if (FFTS == NULL || FFTC == NULL) {
-		printf("Could not allocate memory for Fourier matrices\n");
-		return -1;
-	}
-	for (int i = 0; i < num_notes; i++) {
-		for (int j = 0; j < SAMPLE_LEN; j++) {
-			float fi = (float)(i);
-			float freq = (start_freq * pow(2.0, fi/12.0)) * (((float) j)/((float) RATE)) * 6.283185307179586;
-			FFTS[i*SAMPLE_LEN + j] = (float) sin(freq);
-			FFTC[i*SAMPLE_LEN + j] = (float) cos(freq);
-		}
-	}
-	return 1;
-}
-
-int setup_pa_server() {
-	pa_sample_spec spec;
-	spec.format = PA_SAMPLE_S16NE; // PA_SAMPLE_FLOAT32LE; // ranges from -1.0 to 1.0
-	spec.channels = 1;
-	spec.rate = RATE;
-	 
-	// default server, application name, record audio (instead of write), description of stream,
-	// sample format, default channel map, default buffering attributes, ignore error codes
-	pa_server = (pa_simple *) pa_simple_new(NULL, "real", PA_STREAM_RECORD, NULL, "record", &spec, NULL, NULL, NULL);
-	if (pa_server == NULL) {
-		return -1;
-	} else {
-		return 1;
-	}
-}
-
-int setup_sample() {
-	sample = (dtype *) malloc(SAMPLE_LEN * sizeof(dtype));
-	if (sample == NULL) {
-		return -1;
-	} else {
-		return 1;
-	}
-}
-
-//return -1 on failure, 1 otherwise
-int setup() {
-	if (started == 0) {
-		started = 1;
-		if (setup_matrices() == -1) {
-			printf("setup matrices failed\n");
-			return -1;
-		} 
-		if (setup_pa_server() == -1) {
-			printf("setup pulseaudio server failed\n");
-			return -1;
-		}
-		if (setup_sample() == -1) {
-			printf("setup sample failed\n");
-			return -1;
-		}
-		song = new_vector();
-		if (song == NULL) {
-			printf("setup note vector failed\n");
-			return -1;
-		}
-	}
-	return 1;
-}
-
-int teardown(const char *err) {
-	printf("%s", err);
-	if (pa_server) pa_simple_free(pa_server);
-	if (FFTS) free(FFTS);
-	if (FFTC) free(FFTC);
-	if (sample) free(sample);
-	if (song) free_vector(song);
-	return 0; //we exit after teardown
-}
+#include "app.h"
+#include "setup.h"
 
 int extract() {
 	float *note = (float *) calloc(12, sizeof(float)); // need this to be persistent
@@ -115,7 +7,7 @@ int extract() {
 	float fft_c [num_notes];
 	float X [SAMPLE_LEN];
 
-	if (started != 1 || note == NULL) {
+	if (setup_complete() != 1 || note == NULL) {
 		return -1;
 	}
 
@@ -196,20 +88,6 @@ void update_recording(int cur, int len) {
 	fflush(stdout);
 }
 
-const char *menu =
-"Welcome to my music transcribing tool\n"
-"Options:\n"
-"-h, --help\t\t: print this help menu\n"
-"-t, --time\t\t: amount of time to record for, default is 2 seconds, valid values are [1,300]\n"
-"-v, --verbose\t\t: print all the note strengths\n"
-"-s, --sensitivity\t: how sensitive the program is to noise\n"
-"\t\t\t  * if (max(note_strengths)/sum(note_strengths) <= sensitivity) {\n"
-"\t\t\t  * \t//this audio sample is noise\n"
-"\t\t\t  * }\n"
-"\t\t\t  * valid values are [0,100] (percent)\n\n"
-"-o, --out\t\t: name of output file to write note data to, default is tune.csv";
-
-
 int main(int argc, char *argv[]) {
 	printf("\n");
 	int record_seconds = 2;
@@ -272,14 +150,3 @@ int main(int argc, char *argv[]) {
 	
 	return teardown("");
 }
-
-
-/*		//insert in for loop
-		gettimeofday(&start, NULL);
-		int e = extract();	
-		gettimeofday(&end, NULL);
-		printf("%d: took %lu us\n", num_samples, ((end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec));
-
-		if (e == -1)
-			return teardown("extract failed");
-		*/

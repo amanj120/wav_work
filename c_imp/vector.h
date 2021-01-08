@@ -1,3 +1,6 @@
+#ifndef VECTOR_H_GUARD
+#define VECTOR_H_GUARD
+
 #include <stdlib.h>
 
 typedef struct vector{
@@ -13,3 +16,5 @@ float *get(vector *v, int idx);
 float *head(vector *v);
 float *tail(vector *v);
 int size(vector *v);
+
+#endif
