@@ -78,3 +78,15 @@ int size(vector *v) {
 	}
 	return v -> num_elements;
 }
+
+void clear_vector(vector * v) {
+	if (v == NULL) {
+		return;
+	}
+	for (int i = 0; i < v->len; i++) {
+		free(v->arr[i]);
+		v->arr[i] = NULL;
+	}
+	v->num_elements = 0;
+	return;
+}

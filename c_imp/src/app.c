@@ -1,12 +1,75 @@
 #include "app.h"
 #include "setup.h"
+#include <ncurses.h>
+
+int run_interactive() {
+	initscr();
+	cbreak();
+	noecho();
+	nodelay(stdscr, TRUE);
+	scrollok(stdscr, TRUE);
+	int ch = -1;
+
+	while (ch != 'c') {
+		ch = getch();
+		if (ch == 'n') {
+			for(int i = 0; i < song->num_elements; i++) {
+				printw("[");
+				float * note = get(song, i);
+				for (int j = 0; j < 11; j++) {
+					printw("%.3f, ", note[j]);
+				}
+				printw("%.3f]\n", note[11]);
+				// display_note(i);
+			}
+			printw("moving on to the next note\n");
+			clear_vector(song);
+		}
+
+		if (pa_simple_read(pa_server, (void *)sample, SAMPLE_LEN * sizeof(dtype), NULL) < 0){
+			endwin();
+			return -1; //teardown("reading from pulseaudio failed\n");
+		}
+		if (extract() == -1) {
+			endwin();
+			return -1; teardown("extract failed\n");
+		}
+		refresh();
+	}
+
+	endwin();
+	return 0;
+}
+
+int run_uninteractive(int record_seconds, char *fname) {
+	struct timeval start, end;
+	int num_loops = ((record_seconds * RATE)/SAMPLE_LEN) + 1;
+	for (int loop = 0; loop < num_loops; loop++) {
+		if (pa_simple_read(pa_server, (void *)sample, SAMPLE_LEN * sizeof(dtype), NULL) < 0) {
+			return -1;
+		}
+		if (extract() == -1){
+			return -2;
+		}
+		update_recording(loop, num_loops);
+	}
+
+	printf("\n");
+	for (int idx = 0; idx < num_loops; idx++) {
+		display_note(idx);
+	}
+	write_sample();
+	write_note_arr_csv(fname);
+	return 0;
+}
+
 
 int main(int argc, char *argv[]) {
-	printf("\n");
 	int record_seconds = 2;
 	verbose = 0;
 	sensitivity = 0.5;
 	char *fname = "tune.csv";
+	int interactive = 0;
 
 	for (int input = 1; input < argc; input++) {
 		char *option = argv[input];
@@ -22,6 +85,8 @@ int main(int argc, char *argv[]) {
 			}
 		} else if (strcmp(option, "-v") == 0 || strcmp(option, "--verbose") == 0) {
 			verbose = 1;			
+		} else if (strcmp(option, "-i") == 0 || strcmp(option, "--interactive") == 0) {
+			interactive = 1;			
 		} else if (strcmp(option, "-s") == 0 || strcmp(option, "--sensitivity") == 0) {
 			char *value = argv[++input];
 			int t = atoi(value);
@@ -41,28 +106,29 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	if (setup() == -1)
+
+
+	if (setup() == -1) {
 		return teardown("setup failed\n");
+	}
 
-	struct timeval start, end;
-	int num_loops = ((record_seconds * RATE)/SAMPLE_LEN) + 1;
-	for (int loop = 0; loop < num_loops; loop++) {
-		if (pa_simple_read(pa_server, (void *)sample, SAMPLE_LEN * sizeof(dtype), NULL) < 0)
+	if (interactive == 1) {
+		if (run_interactive() == -1) {
+			return teardown("error encountered running in interactive mode\n");
+		}
+	} else {
+		int r = run_uninteractive(record_seconds, fname);
+		if (r == -1) {
 			return teardown("reading from pulseaudio failed\n");
-		if (extract() == -1)
+		} else if (r == -2) {
 			return teardown("extract failed\n");
-		update_recording(loop, num_loops);
+		}
 	}
-
-	printf("\n");
-	for (int idx = 0; idx < num_loops; idx++) {
-		display_note(idx);
-	}
-	write_sample();
-	write_note_arr_csv(fname);
 	
 	return teardown("");
 }
+
+
 
 int extract() {
 	float fft_s [num_notes];

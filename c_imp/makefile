@@ -1,5 +1,5 @@
 makeapp: src/*.c
-	gcc -o app src/*.c -lpulse-simple -lblas64 -lm -ldl
+	gcc -o app src/*.c -lpulse-simple -lblas64 -lm -ldl -lncurses
 
 clean:
-	rm -f app
+	rm -f app *.csv

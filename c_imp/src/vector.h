@@ -16,5 +16,5 @@ float *get(vector *v, int idx);
 float *head(vector *v);
 float *tail(vector *v);
 int size(vector *v);
-
+void clear_vector(vector *v);
 #endif
