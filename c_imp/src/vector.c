@@ -26,9 +26,7 @@ void free_vector(vector *v) {
 		return;
 	}
 
-	for (int i = 0; i < v->len; i++) {
-		free(v->arr[i]);
-	}
+	clear_vector(v);
 	free(v);
 	return;
 }

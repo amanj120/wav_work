@@ -80,7 +80,7 @@ char *print_and_update_prior(double * prior) {
 	return retstr;
 }
 
-int run_interactive() {
+int run_interactive(char *fname) {
 	initscr();
 	cbreak();
 	noecho();
@@ -89,17 +89,23 @@ int run_interactive() {
 	
 	int ch = 'n';
 	FILE *fp;
-	fp = fopen("interactive2.txt", "w");
+	fp = fopen(fname, "w");
 	double *prior = (double *) malloc(12 * sizeof(double));
 	int paused = 0;
+	char * str = NULL;
+	vector *dels = new_vector();
+	int leave = 1;
 
-	while (ch != 'c') {		
+	while (leave) {		
 		if (ch == 'n') {
 			paused = ~paused;
-			printw("\n to record the next note, press 'n', to exit, press 'c'\r");
+			printw("\n to record the next note, press 'n', to exit, press 'q'\r");
 			clear_vector(song);
 			for (int i = 0; i < 12; i++) {
 				prior[i] = 1.0/12.0;
+			}
+			if (str != NULL & paused != 0) {
+				fprintf(fp, "%s\n", str);
 			}
 		} 
 		if (paused == 0) {
@@ -113,17 +119,20 @@ int run_interactive() {
 				fclose(fp);
 				return -1;
 			}
-			char * str = print_and_update_prior(prior);
+			str = print_and_update_prior(prior);
 			printw("\r\t%s", str);
-			free(str);
-		} 
+			append(dels, str);
+		} else if (ch == 'q') {
+			leave = 0;
+		}
 		refresh();
 		ch = getch();
 	}
 
 	free(prior);
-	endwin();
 	fclose(fp);
+	free_vector(dels);
+	endwin();
 	return 0;
 }
 
@@ -184,8 +193,8 @@ int main(int argc, char *argv[]) {
 		} else if (strcmp(option, "-o") == 0 || strcmp(option, "--out") == 0) {
 			fname = argv[++input];
 			int fname_len = strlen(fname);
-			if (fname_len <= 4 || strcmp(fname + fname_len - 4, ".csv") != 0) {
-				return teardown("invalid argument for --out (-o) : expect a file name ending in '.csv'");
+			if (fname_len <= 1) {
+				return teardown("invalid argument for --out (-o) : expect a non-empty file name");
 			}
 		} else {
 			return teardown("invalid input parameter\n");
@@ -199,7 +208,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (interactive == 1) {
-		if (run_interactive() == -1) {
+		if (run_interactive(fname) == -1) {
 			return teardown("error encountered running in interactive mode\n");
 		}
 	} else {
