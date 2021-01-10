@@ -2,42 +2,128 @@
 #include "setup.h"
 #include <ncurses.h>
 
+char* sort_and_print_prior(double *prior) {
+	for (int i = 0; i < 12; i++) {
+		for (int j = i+1; j < 12; j++) {
+			if (prior[i] == prior[j]) {
+				prior[i] += 0.0000001;
+				i = 0;
+			}
+		}
+	}
+
+	double tosort[12] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+	int names[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+	for(int i = 0; i < 12; i++) {
+		if (prior[i] > tosort[0]) {
+			tosort[0] = prior[i];
+			names[0] = i; 
+		}
+	}
+
+	for(int n = 1; n < 12; n++) {
+		for(int i = 0; i < 12; i++) {
+			if (prior[i] > tosort[n] && prior[i] < tosort[n-1]) {
+				tosort[n] = prior[i];
+				names[n] = i;
+			}
+		}
+	}
+
+	char * retstr = calloc(200, 1);//overshoot size
+	int index = 0;
+	for (int i = 0; i < 12; i++) {
+		if (tosort[i] > 1.00) //make sure less than 1
+			tosort[i] = 1.00;
+		char temp[20];
+		const char * fmt = "[%s:% .1f%%]";
+		sprintf(temp, fmt, NOTES[names[i]], (tosort[i] * 99.9));
+		sprintf((retstr +index), fmt, NOTES[names[i]], (tosort[i] * 99.9));
+		index += strlen(temp);
+	}
+	return retstr;
+}
+
+char *print_and_update_prior(double * prior) {
+	char * retstr = sort_and_print_prior(prior);
+
+	double sum = 0.0;
+	float *cur = (float *)tail(song);
+	for (int i = 0; i < 12; i++) {
+		sum += cur[i];
+	}
+
+	// update 1
+	// for (int i = 0; i < 12; i++) {
+	// 	double p_temp = prior[i];
+	// 	double v_temp = (double)cur[i]/sum;
+	// 	prior[i] = (p_temp * v_temp) / (p_temp * v_temp + (1-p_temp)*(1-v_temp));
+	// }
+
+	//update 2: average
+	// double num_samples = (double) size(song);
+	double num_samples = 9; //about 1 second
+	for (int i = 0; i < 12; i++) {
+		prior[i] = (prior[i] * (num_samples - 1) + cur[i])/num_samples;
+	}
+
+	sum = 0.0;
+	for (int i = 0; i < 12; i++) {
+		sum += prior[i];
+	}
+
+	for (int i = 0; i < 12; i++) {
+		prior[i] /= sum;
+	}
+
+	return retstr;
+}
+
 int run_interactive() {
 	initscr();
 	cbreak();
 	noecho();
 	nodelay(stdscr, TRUE);
 	scrollok(stdscr, TRUE);
-	int ch = -1;
+	
+	int ch = 'n';
+	FILE *fp;
+	fp = fopen("interactive2.txt", "w");
+	double *prior = (double *) malloc(12 * sizeof(double));
+	int paused = 0;
 
-	while (ch != 'c') {
-		ch = getch();
+	while (ch != 'c') {		
 		if (ch == 'n') {
-			for(int i = 0; i < song->num_elements; i++) {
-				printw("[");
-				float * note = get(song, i);
-				for (int j = 0; j < 11; j++) {
-					printw("%.3f, ", note[j]);
-				}
-				printw("%.3f]\n", note[11]);
-				// display_note(i);
-			}
-			printw("moving on to the next note\n");
+			paused = ~paused;
+			printw("\n to record the next note, press 'n', to exit, press 'c'\r");
 			clear_vector(song);
-		}
-
-		if (pa_simple_read(pa_server, (void *)sample, SAMPLE_LEN * sizeof(dtype), NULL) < 0){
-			endwin();
-			return -1; //teardown("reading from pulseaudio failed\n");
-		}
-		if (extract() == -1) {
-			endwin();
-			return -1; teardown("extract failed\n");
-		}
+			for (int i = 0; i < 12; i++) {
+				prior[i] = 1.0/12.0;
+			}
+		} 
+		if (paused == 0) {
+			if (pa_simple_read(pa_server, (void *)sample, SAMPLE_LEN * sizeof(dtype), NULL) < 0){
+				endwin();
+				fclose(fp);
+				return -1; 
+			}
+			if (extract() == -1) {
+				endwin();
+				fclose(fp);
+				return -1;
+			}
+			char * str = print_and_update_prior(prior);
+			printw("\r\t%s", str);
+			free(str);
+		} 
 		refresh();
+		ch = getch();
 	}
 
+	free(prior);
 	endwin();
+	fclose(fp);
 	return 0;
 }
 
@@ -156,7 +242,7 @@ int extract() {
 	}
 
 	cblas_sscal(12, (1/cblas_snrm2(12, note, 1)), note, 1);
-	return append(song, note);
+	return append((void *)song, note);
 }
 
 void write_sample() {
@@ -172,7 +258,7 @@ void write_note_arr_csv(const char *fname) {
 	FILE *fp;
 	fp = fopen(fname, "w");
 	for (int i = 0; i < size(song); i++) {
-		float *notes = get(song, i); 
+		float *notes = (float *)get(song, i); 
 		for (int j = 0; j < 11; j++) {
 			fprintf(fp, "%.4f, ", notes[j]);
 		}
@@ -184,7 +270,7 @@ void write_note_arr_csv(const char *fname) {
 void display_note(int idx) { 
 // TODO: make the note/noise recognition better 
 // (i.e. differentiate between noise, an in tune note, and an out of tune note in between two in tune notes)
-	float *note = get(song, idx);
+	float *note = (float *)get(song, idx);
 
 	float sum = cblas_sasum(12, note, 1);
 	int max_idx = cblas_isamax(12, note, 1);

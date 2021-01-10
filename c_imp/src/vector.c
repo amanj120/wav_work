@@ -9,7 +9,7 @@ vector *new_vector() {
 		return NULL;
 	}
 
-	ret->arr = calloc(default_length, sizeof(float *));
+	ret->arr = calloc(default_length, sizeof(void *));
 
 	if (ret->arr == NULL) {
 		free(ret);
@@ -33,13 +33,13 @@ void free_vector(vector *v) {
 	return;
 }
 
-int append(vector *v, float *value) {
+int append(vector *v, void *value) {
 	if (v == NULL) {
 		return -1;
 	}
 	if (v->num_elements == v->len) {
 		v->len *= 2;
-		float ** temp = (float **) realloc(v->arr, v->len * sizeof(float *));
+		void ** temp = (void **) realloc(v->arr, v->len * sizeof(void *));
 		if (temp == NULL) {
 			return -1;
 		} else {
@@ -50,7 +50,7 @@ int append(vector *v, float *value) {
 	return 1;
 }
 
-float *get(vector *v, int idx) {
+void *get(vector *v, int idx) {
 	if (v == NULL) {
 		return NULL;
 	}
@@ -61,11 +61,11 @@ float *get(vector *v, int idx) {
 	}
 }
 
-float *head(vector *v) {
+void *head(vector *v) {
 	return get(v, 0);
 }
 
-float *tail(vector *v) {
+void *tail(vector *v) {
 	if (v == NULL) {
 		return NULL;
 	}

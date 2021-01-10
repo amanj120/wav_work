@@ -4,17 +4,17 @@
 #include <stdlib.h>
 
 typedef struct vector{
-	float **arr;
+	void **arr;
 	int len;
 	int num_elements;
 } vector;
 
 vector *new_vector();
-int append(vector *v, float *value);
+int append(vector *v, void *value);
 void free_vector(vector *v);
-float *get(vector *v, int idx);
-float *head(vector *v);
-float *tail(vector *v);
+void *get(vector *v, int idx);
+void *head(vector *v);
+void *tail(vector *v);
 int size(vector *v);
 void clear_vector(vector *v);
 #endif
