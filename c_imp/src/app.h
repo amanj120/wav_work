@@ -8,6 +8,7 @@
 #include <math.h>
 #include <sys/time.h>
 #include <string.h>
+#include <ncurses.h>
 
 #include "vector.h"
 
@@ -21,28 +22,27 @@ pa_simple *pa_server = NULL;
 vector *song;
 
 const int RATE = 44100;
-const int SAMPLE_LEN = 4096; 
+const int SAMPLE_LEN = 4096+2048; 
 const int num_notes = 96; //8 octaves: A1 through Ab8
 const float start_freq = 55.0;
 
 const char *NOTES[12] = {"A", "Bb", "B", "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab"};
 const char *menu =
-"Welcome to my music transcribing tool\n"
+"Welcome to my music transcribing tool!\n\n"
+"    In the default mode, you can sing/hum/whistle a note\n"
+"and press n to move on to record the next note. When you\n"
+"are done recording press 'q' to quit and save your file.\n\n"
 "Options:\n"
 "-h, --help\t\t: print this help menu\n"
-"-t, --time\t\t: amount of time to record for, default is 2 seconds, valid values are [1,300]\n"
+"-o, --out\t\t: output file to write to. Default is 'tune.txt'\n"
+"-u, --uninteractive\t: record everything all at once, the app will guess notes for you.\n"
+"-t, --time\t\t: amount of time to record for. Default is 2 seconds, valid values are [1,300]\n"
+"\t\t\t  only works in uninteractive mode\n"
 "-v, --verbose\t\t: print all the note strengths\n"
-"-s, --sensitivity\t: how sensitive the program is to noise\n"
-"\t\t\t  * if (max(note_strengths)/sum(note_strengths) <= sensitivity) {\n"
-"\t\t\t  * \t//this audio sample is noise\n"
-"\t\t\t  * }\n"
-"\t\t\t  * valid values are [0,100] (percent)\n\n"
-"-o, --out\t\t: name of output file to write note data to, default is tune.csv\n"
-"-i, --interactive\t: go note by note, enter 'n' to record the next note, 'p' to pause recording, 'c' to cancel\n";
+"\t\t\t  only works in uninteractive mode\n"
+;
 
 static int verbose;
-static float sensitivity;
-
 int extract();
 
 void write_sample();

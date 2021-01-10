@@ -1,9 +1,8 @@
 #include "app.h"
 #include "setup.h"
-#include <ncurses.h>
 
-char* sort_and_print_prior(double *prior) {
-	for (int i = 0; i < 12; i++) {
+char *sort_and_print_prior(double *prior) {
+	for (int i = 0; i < 12; i++) { //remove duplicates
 		for (int j = i+1; j < 12; j++) {
 			if (prior[i] == prior[j]) {
 				prior[i] += 0.0000001;
@@ -31,13 +30,16 @@ char* sort_and_print_prior(double *prior) {
 		}
 	}
 
-	char * retstr = calloc(200, 1);//overshoot size
+	char *retstr = calloc(150, 1);//overshoot size
+	if (retstr == NULL) {
+		return NULL;
+	}
 	int index = 0;
 	for (int i = 0; i < 12; i++) {
 		if (tosort[i] > 1.00) //make sure less than 1
 			tosort[i] = 1.00;
 		char temp[20];
-		const char * fmt = "[%s:% .1f%%]";
+		const char *fmt = "[%s:% .1f%%]";
 		sprintf(temp, fmt, NOTES[names[i]], (tosort[i] * 99.9));
 		sprintf((retstr +index), fmt, NOTES[names[i]], (tosort[i] * 99.9));
 		index += strlen(temp);
@@ -46,24 +48,18 @@ char* sort_and_print_prior(double *prior) {
 }
 
 char *print_and_update_prior(double * prior) {
-	char * retstr = sort_and_print_prior(prior);
-
+	char *retstr = sort_and_print_prior(prior);
+	if (retstr == NULL) {
+		return NULL;
+	}
 	double sum = 0.0;
 	float *cur = (float *)tail(song);
+
 	for (int i = 0; i < 12; i++) {
 		sum += cur[i];
 	}
 
-	// update 1
-	// for (int i = 0; i < 12; i++) {
-	// 	double p_temp = prior[i];
-	// 	double v_temp = (double)cur[i]/sum;
-	// 	prior[i] = (p_temp * v_temp) / (p_temp * v_temp + (1-p_temp)*(1-v_temp));
-	// }
-
-	//update 2: average
-	// double num_samples = (double) size(song);
-	double num_samples = 9; //about 1 second
+	double num_samples = 6; //about 1 second
 	for (int i = 0; i < 12; i++) {
 		prior[i] = (prior[i] * (num_samples - 1) + cur[i])/num_samples;
 	}
@@ -72,11 +68,9 @@ char *print_and_update_prior(double * prior) {
 	for (int i = 0; i < 12; i++) {
 		sum += prior[i];
 	}
-
 	for (int i = 0; i < 12; i++) {
 		prior[i] /= sum;
 	}
-
 	return retstr;
 }
 
@@ -86,20 +80,24 @@ int run_interactive(char *fname) {
 	noecho();
 	nodelay(stdscr, TRUE);
 	scrollok(stdscr, TRUE);
+	resizeterm(40, 160);
 	
 	int ch = 'n';
-	FILE *fp;
-	fp = fopen(fname, "w");
+	FILE *fp = fopen(fname, "w");
 	double *prior = (double *) malloc(12 * sizeof(double));
 	int paused = 0;
 	char * str = NULL;
 	vector *dels = new_vector();
 	int leave = 1;
 
+	if (prior == NULL || dels == NULL) {
+		goto error;
+	} 
+
 	while (leave) {		
 		if (ch == 'n') {
 			paused = ~paused;
-			printw("\n to record the next note, press 'n', to exit, press 'q'\r");
+			printw("\n\tto continue press 'n', to exit press 'q'\r");
 			clear_vector(song);
 			for (int i = 0; i < 12; i++) {
 				prior[i] = 1.0/12.0;
@@ -110,30 +108,37 @@ int run_interactive(char *fname) {
 		} 
 		if (paused == 0) {
 			if (pa_simple_read(pa_server, (void *)sample, SAMPLE_LEN * sizeof(dtype), NULL) < 0){
-				endwin();
-				fclose(fp);
-				return -1; 
+				goto error;
 			}
 			if (extract() == -1) {
-				endwin();
-				fclose(fp);
-				return -1;
+				goto error;
 			}
 			str = print_and_update_prior(prior);
-			printw("\r\t%s", str);
-			append(dels, str);
+			if (str == NULL) {
+				goto error;
+			}
+			printw("\r\t%s\t\t", str);
+			if (append(dels, str) == -1) {
+				goto error;
+			}
 		} else if (ch == 'q') {
 			leave = 0;
 		}
 		refresh();
 		ch = getch();
 	}
-
 	free(prior);
 	fclose(fp);
 	free_vector(dels);
 	endwin();
 	return 0;
+
+error:
+	free(prior);
+	fclose(fp);
+	free_vector(dels);
+	endwin();
+	return -1;
 }
 
 int run_uninteractive(int record_seconds, char *fname) {
@@ -162,9 +167,8 @@ int run_uninteractive(int record_seconds, char *fname) {
 int main(int argc, char *argv[]) {
 	int record_seconds = 2;
 	verbose = 0;
-	sensitivity = 0.5;
-	char *fname = "tune.csv";
-	int interactive = 0;
+	char *fname = "tune.txt";
+	int interactive = 1;
 
 	for (int input = 1; input < argc; input++) {
 		char *option = argv[input];
@@ -180,16 +184,8 @@ int main(int argc, char *argv[]) {
 			}
 		} else if (strcmp(option, "-v") == 0 || strcmp(option, "--verbose") == 0) {
 			verbose = 1;			
-		} else if (strcmp(option, "-i") == 0 || strcmp(option, "--interactive") == 0) {
-			interactive = 1;			
-		} else if (strcmp(option, "-s") == 0 || strcmp(option, "--sensitivity") == 0) {
-			char *value = argv[++input];
-			int t = atoi(value);
-			if (t < 0 || t > 100) {
-				return teardown("invalid argument for --sensitivity (-s) : expect a positive integer in the range [0,100]");
-			} else {
-				sensitivity = ((float)t)/100.0;
-			}
+		} else if (strcmp(option, "-u") == 0 || strcmp(option, "--uninteractive") == 0) {
+			interactive = 0;			
 		} else if (strcmp(option, "-o") == 0 || strcmp(option, "--out") == 0) {
 			fname = argv[++input];
 			int fname_len = strlen(fname);
@@ -200,8 +196,6 @@ int main(int argc, char *argv[]) {
 			return teardown("invalid input parameter\n");
 		}
 	}
-
-
 
 	if (setup() == -1) {
 		return teardown("setup failed\n");
@@ -222,8 +216,6 @@ int main(int argc, char *argv[]) {
 	
 	return teardown("");
 }
-
-
 
 int extract() {
 	float fft_s [num_notes];
@@ -286,7 +278,7 @@ void display_note(int idx) {
 	float max = note[max_idx];
 	float strength = max/sum;
 
-	if (strength > sensitivity) {
+	if (strength > 0.3) {
 		printf("sample %d:\t%s\t(strength: %.3f)\n",idx, NOTES[max_idx], strength);
 	} else {
 		printf("sample %d:\tnoise\t(strength: %.3f)\n", idx, strength);
